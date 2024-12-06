@@ -10,7 +10,7 @@ const nodemailer = require("nodemailer");
 const messages = require("../../utilities/messages");
 const universal = require("../../utilities/universal");
 const path = require("path");
-// const imagepath = require("")
+
 /*************************** addContractor ***************************/
 const productAdd = async (req) => {
   try {
@@ -800,8 +800,156 @@ const adminOrderComplete = async (req) => {
   }
 }
 
+/*************************** adminOrderComplete ***************************/
+const addCategory = async (req) => {
+  try {
+    const { category } = req.body;
+    const image = req.file ? req.file.filename : null;  
+
+    if (!category || !image) {
+      throw new Error("Category name and image are required.");
+    }
+
+    const data = {
+      category: category,
+      image: image
+    };
+
+    const addCategoryResult = await dbService.createOneRecord("categoryModel", data);
+
+    if (addCategoryResult) {
+      return {
+        message: "Category added successfully!"
+      };
+    } else {
+      throw new Error("Failed to add category.");
+    }
+  } catch (error) {
+    console.error("Error in addCategory:", error);
+    return {
+      message: error.message || "An error occurred while adding the category."
+    };
+  }
+};
+
+/*************************** getCategory ***************************/
+const getCategory = async (req) => {
+  let where = {
+    isDeleted: false,
+  };
+
+  try {
+    let data = await dbService.findAllRecords("categoryModel", {});
+
+    if (data && data.length > 0) {
+      return {
+        success: true,
+        data: data,
+        message: "Category data fetched successfully!",
+      };
+    } else {
+      return {
+        success: false,
+        message: "No categories found or all categories are deleted.",
+      };
+    }
+  } catch (error) {
+    console.error("Error fetching categories:", error);
+    return {
+      success: false,
+      message: "Error fetching categories",
+      error: error.message,
+    };
+  }
+};
+
+/*************************** categoryDelete ***************************/
+const categoryDelete = async (req, res) => {
+  try {
+    console.log("categoryDelete", req.body);
+
+    let { categoryId } = req.body;
+
+    // Ensure that categoryId is provided
+    if (!categoryId) {
+      return {
+        messages: "Category ID is required",
+      };
+    }
+
+    let deleteData = await dbService.deleteManyRecords("categoryModel", {
+      _id: categoryId,
+    });
+
+    if (deleteData.deletedCount === 0) {
+      return {
+        messages: "Category not found",
+      };
+    }
+
+    return {
+      messages: "Category deleted successfully",
+    };
+  } catch (error) {
+    return {
+      messages: "An error occurred while deleting the category",
+    };
+  }
+};
+
+/*************************** updateCategory ***************************/
+const updateCategory = async (req) => {
+  console.log(req.body);
+  const { categoryName, categoryId } = req.body;
+
+  if (!categoryId) {
+    return { message: "Category ID is required" };
+  }
+
+  try {
+    // Find the category by ID
+    const category = await dbService.findOneRecord("categoryModel", { _id: categoryId });
+    if (!category) {
+      return { message: "Category not found" };
+    }
+
+    // Handle the image (if provided)
+    const image = req.file ? req.file.filename : null;
+
+    // Update data with categoryName and image (if new image is uploaded)
+    const updateData = {
+      categoryName,
+      image
+    };
+
+    // Perform the update operation
+    const updatedCategory = await dbService.findOneAndUpdateRecord(
+      "categoryModel",
+      { _id: categoryId },
+      updateData,
+      { new: true }
+    );
+
+    console.log("Updated category:", updatedCategory);
+
+    if (updatedCategory) {
+      return { message: "Category updated successfully" };
+    } else {
+      return { message: "Category update failed" };
+    }
+  } catch (error) {
+    console.error("Error updating category:", error);
+    return { message: "An error occurred while updating the category" };
+  }
+};
+
+
 
 module.exports = {
+  updateCategory,
+  categoryDelete,
+  getCategory,
+  addCategory,
   adminOrderCreate,
   sendPosterWithEmail,
   order,

@@ -17,6 +17,10 @@ const getAllOrderList = require("./getAllOrderList");
 const sendPosterWithEmail = require("./sendPosterWithEmail");
 const adminOrderCreate = require("./adminOrderCreate");
 const adminOrderComplete = require("./adminOrderComplete");
+const addCategory = require("./addCategory");
+const getCategory = require("./getCategory");
+const categoryDelete = require("./categoryDelete");
+const updateCategory = require("./updateCategory");
 
 module.exports = [
     productAdd,
@@ -31,5 +35,9 @@ module.exports = [
     getAllOrderList,
     sendPosterWithEmail,
     adminOrderCreate,
-    adminOrderComplete
+    adminOrderComplete,
+    addCategory,
+    getCategory,
+    categoryDelete,
+    updateCategory
 ];
