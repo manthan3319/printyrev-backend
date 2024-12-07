@@ -1,0 +1,69 @@
+const productAdd = async (req) => {
+  try {
+    const parsedBody = {
+      ...req.body,
+      framecolor: JSON.parse(req.body.framecolor || "[]"),
+      framesize: JSON.parse(req.body.framesize || "[]"),
+      category: JSON.parse(req.body.category || "[]"),
+      productdetail: JSON.parse(req.body.productdetail || "[]"),
+      tipsList: JSON.parse(req.body.tipsList || "[]"),
+      frameFields: JSON.parse(req.body.frameFields || "[]"),
+    };
+
+    const colorImages = {};
+    if (req.files) {
+      for (const fieldName in req.files) {
+        const colorMatch = fieldName.match(/colorImages\[(.+)\]\[\]/);
+        if (colorMatch) {
+          const color = colorMatch[1];
+          colorImages[color] = req.files[fieldName].map((file) => file.filename);
+        }
+      }
+    }
+
+    let sanitizedPrice = req.body.price;
+    if (typeof sanitizedPrice === "string") {
+      try {
+        sanitizedPrice = JSON.parse(sanitizedPrice);
+      } catch (e) {
+        throw new Error("Invalid price format");
+      }
+    }
+
+    const priceArray = Object.entries(sanitizedPrice).map(([frame, prices]) => ({
+      frame,
+      designPrice: prices["Design Price"] || "",
+      withFrame: prices.withFrame || "",
+    }));
+
+    // console.log("sanitizedPrice", priceArray);
+
+    const productData = {
+      ...parsedBody,
+      colorImages,
+      price: priceArray,
+      createdAt: new Date(),
+    };
+
+    // console.log("Final Product Data:", productData);
+    console.log("category",req.body.category);
+    const categoryData = await dbService.findOneRecord("categoryModel",{category:req.body.category})
+    console.log("categoryData",categoryData);
+
+    // const newProduct = await dbService.createOneRecord("productModel", productData);
+    // if (newProduct) {
+    //   return {
+    //     message: "product add sucessfuly!"
+    //   };
+    // }
+    // else {
+    //   return {
+    //     message: "product not added!"
+    //   }
+    // }
+
+  } catch (error) {
+    console.error("Error adding product:", error);
+    throw new Error("Failed to process product data");
+  }
+};

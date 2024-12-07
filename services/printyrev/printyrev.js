@@ -10,6 +10,7 @@ const nodemailer = require("nodemailer");
 const messages = require("../../utilities/messages");
 const universal = require("../../utilities/universal");
 const path = require("path");
+const Razorpay = require("razorpay");
 
 /*************************** addContractor ***************************/
 const productAdd = async (req) => {
@@ -30,7 +31,9 @@ const productAdd = async (req) => {
         const colorMatch = fieldName.match(/colorImages\[(.+)\]\[\]/);
         if (colorMatch) {
           const color = colorMatch[1];
-          colorImages[color] = req.files[fieldName].map((file) => file.filename);
+          colorImages[color] = req.files[fieldName].map(
+            (file) => file.filename
+          );
         }
       }
     }
@@ -44,36 +47,62 @@ const productAdd = async (req) => {
       }
     }
 
-    const priceArray = Object.entries(sanitizedPrice).map(([frame, prices]) => ({
-      frame,
-      designPrice: prices["Design Price"] || "",
-      withFrame: prices.withFrame || "",
-    }));
+    const priceArray = Object.entries(sanitizedPrice).map(
+      ([frame, prices]) => ({
+        frame,
+        designPrice: prices["Design Price"] || "",
+        withFrame: prices.withFrame || "",
+      })
+    );
 
-    // console.log("sanitizedPrice", priceArray);
+    const categories = JSON.parse(req.body.category || "[]");
+    const categoryDataArray = [];
+
+    for (const categoryName of categories) {
+      const categoryData = await dbService.findOneRecord("categoryModel", {
+        category: categoryName,
+      });
+
+      if (categoryData) {
+        categoryDataArray.push({
+          name: categoryData.category,
+          categoryId: categoryData._id.toString(),
+        });
+
+        const currentProductCount = parseInt(categoryData.product || "0", 10);
+        const updatedProductCount = currentProductCount + 1;
+
+        await dbService.updateManyRecords(
+          "categoryModel",
+          { category: categoryName },
+          { $set: { product: updatedProductCount } }
+        );
+      } else {
+        console.warn(`Category "${categoryName}" not found.`);
+      }
+    }
 
     const productData = {
       ...parsedBody,
       colorImages,
       price: priceArray,
+      category: categoryDataArray,
       createdAt: new Date(),
     };
 
-    // console.log("Final Product Data:", productData);
-
-    const newProduct = await dbService.createOneRecord("productModel", productData);
-    // console.log("newProduct", newProduct);
+    const newProduct = await dbService.createOneRecord(
+      "productModel",
+      productData
+    );
     if (newProduct) {
       return {
-        message: "product add sucessfuly!"
+        message: "product add sucessfuly!",
+      };
+    } else {
+      return {
+        message: "product not added!",
       };
     }
-    else {
-      return {
-        message: "product not added!"
-      }
-    }
-
   } catch (error) {
     console.error("Error adding product:", error);
     throw new Error("Failed to process product data");
@@ -83,17 +112,17 @@ const productAdd = async (req) => {
 /*************************** productList ***************************/
 const productList = async (req) => {
   const where = {
-    isDeleted: false
-  }
+    isDeleted: false,
+  };
 
   const productData = await dbService.findAllRecords("productModel", where);
   if (productData) {
     return {
       message: "product data fach sucessfuly",
-      ProductData: productData
-    }
+      ProductData: productData,
+    };
   }
-}
+};
 
 /*************************** sendOtp ***************************/
 const sendOtp = async (req) => {
@@ -119,6 +148,9 @@ const sendOtp = async (req) => {
       user: "vaghasiyamanthan5@gmail.com",
       pass: "kbxedryninlmaxpl",
     },
+    tls: {
+      rejectUnauthorized: false,
+    },
   });
 
   const mailOptions = {
@@ -142,18 +174,15 @@ const sendOtp = async (req) => {
 
     if (otpdataAdd) {
       return {
-        message: 'OTP sent successfully',
-        statusCode: 200
+        message: "OTP sent successfully",
+        statusCode: 200,
+      };
+    } else {
+      return {
+        message: "Failed to send OTP",
+        statusCode: 500,
       };
     }
-    else {
-      return {
-        message: 'Failed to send OTP',
-        statusCode: 500
-      }
-
-    }
-
   } catch (error) {
     console.error("Error sending OTP: ", error);
     return {
@@ -169,7 +198,7 @@ const deleteotp = async (req) => {
   const timeLimit = currentTime.getTime() - 2 * 60 * 1000; // Subtract 2 minutes from the current time
 
   // Deleting OTP records that are older than 2 minutes
-  const deleterecord = await dbService.deleteManyRecords('otpModel', {
+  const deleterecord = await dbService.deleteManyRecords("otpModel", {
     createdAt: { $lt: new Date(timeLimit) },
   });
 
@@ -177,7 +206,7 @@ const deleteotp = async (req) => {
   if (deleterecord.deletedCount > 0) {
     console.log(`${deleterecord.deletedCount} OTP records deleted.`);
   } else {
-    console.log('No OTP records found to delete.');
+    console.log("No OTP records found to delete.");
   }
 };
 
@@ -193,27 +222,35 @@ const otpVerify = async (req) => {
     if (getData) {
       return {
         message: "Success",
-        statusCode: 200
+        statusCode: 200,
       };
     } else {
       return {
         message: "Incorrect OTP",
-        statusCode: 400
+        statusCode: 400,
       };
     }
   } catch (error) {
     console.error("Error verifying OTP:", error);
     return {
       message: "Internal Server Error",
-      statusCode: 500
+      statusCode: 500,
     };
   }
-}
+};
 
 /*************************** otpVerify And CreateUser ***************************/
 const addToCardOverify = async (req, uploadedImages) => {
   try {
-    const { email, price, productId, selectedColor, selectedSize, frameDetails, includeFrame } = req.body;
+    const {
+      email,
+      price,
+      productId,
+      selectedColor,
+      selectedSize,
+      frameDetails,
+      includeFrame,
+    } = req.body;
     // console.log("addToCardOverify Request Body:", req.body);
 
     const imageFileNames = [];
@@ -230,7 +267,9 @@ const addToCardOverify = async (req, uploadedImages) => {
     // console.log("Uploaded Image Filenames:", imageFileNames);
 
     if (email) {
-      const FindUserData = await dbService.findOneRecord("userModel", { email });
+      const FindUserData = await dbService.findOneRecord("userModel", {
+        email,
+      });
       console.log("User Data:", FindUserData);
 
       if (FindUserData) {
@@ -244,38 +283,50 @@ const addToCardOverify = async (req, uploadedImages) => {
           includeFrame,
           photos: imageFileNames,
           email,
-          userid: FindUserData._id
+          userid: FindUserData._id,
         };
 
         // console.log("AddToCart Data:", AddtocardData);
-        const result = await dbService.createOneRecord("cartModel", AddtocardData);
+        const result = await dbService.createOneRecord(
+          "cartModel",
+          AddtocardData
+        );
 
         if (result) {
-          const FindUserData = await dbService.findOneRecord("userModel", { email });
+          const FindUserData = await dbService.findOneRecord("userModel", {
+            email,
+          });
           const token = FindUserData.loginToken[0].token;
           return {
             messages: "user create",
             token: token,
-            email: email
-          }
+            email: email,
+          };
         }
-
       } else {
         const addUser = await dbService.createOneRecord("userModel", { email });
 
         if (addUser) {
-          const firstThreeEmailChars = email.split('@')[0].slice(0, 3);
+          const firstThreeEmailChars = email.split("@")[0].slice(0, 3);
           const tokenString = `${firstThreeEmailChars}2024`;
 
-          const token = await universal.generateJwtTokenFn({ userId: addUser._id, token: addUser._id });
-
-          const encryptedPassword = await universal.encryptpassword(tokenString);
-
-          const updatedUser = await dbService.updateManyRecords("userModel", { _id: addUser._id }, {
-            $push: { loginToken: { token } },
-            password: encryptedPassword
+          const token = await universal.generateJwtTokenFn({
+            userId: addUser._id,
+            token: addUser._id,
           });
 
+          const encryptedPassword = await universal.encryptpassword(
+            tokenString
+          );
+
+          const updatedUser = await dbService.updateManyRecords(
+            "userModel",
+            { _id: addUser._id },
+            {
+              $push: { loginToken: { token } },
+              password: encryptedPassword,
+            }
+          );
 
           const AddtocardData = {
             price,
@@ -286,31 +337,35 @@ const addToCardOverify = async (req, uploadedImages) => {
             includeFrame,
             photos: imageFileNames,
             email,
-            userid: addUser._id
+            userid: addUser._id,
           };
 
           // console.log("AddtocardData",AddtocardData);
 
-          const result = await dbService.createOneRecord("cartModel", AddtocardData);
+          const result = await dbService.createOneRecord(
+            "cartModel",
+            AddtocardData
+          );
           // console.log("AddtocardData result",result);
 
-
           if (result) {
-            const FindUserData = await dbService.findOneRecord("userModel", { email });
+            const FindUserData = await dbService.findOneRecord("userModel", {
+              email,
+            });
             const token = FindUserData.loginToken[0].token;
             console.log("FindUserData", FindUserData);
             return {
               messages: "user create",
               token: token,
-              email: email
-            }
+              email: email,
+            };
           }
         }
       }
     }
   } catch (error) {
     console.error("Error in addToCardOverify function:", error);
-    throw new Error('Error in Add to Cart Overify function');
+    throw new Error("Error in Add to Cart Overify function");
   }
 };
 
@@ -365,7 +420,6 @@ const cartList = async (req) => {
         selectedColorImage: product.colorImages.get(cartItem.selectedColor),
         priceDetails: selectedPrice || {},
       };
-
     });
 
     // console.log("mergedCartData", mergedCartData);
@@ -399,7 +453,7 @@ const removeCartIteam = async (req) => {
       productId: productId,
       selectedColor: color,
       selectedSize: size,
-      _id: cartid
+      _id: cartid,
     };
 
     // Deleting the item(s) from the database
@@ -415,7 +469,6 @@ const removeCartIteam = async (req) => {
         message: "No item found to delete.",
       };
     }
-
   } catch (error) {
     console.error("Error in removeCartItem:", error.message);
     return {
@@ -440,7 +493,6 @@ const chnageImgCartItem = async (req) => {
     }
   }
 
-
   try {
     // Define the search criteria for finding the cart item
     const where = {
@@ -451,7 +503,10 @@ const chnageImgCartItem = async (req) => {
     };
 
     // Find the existing cart item
-    const updaterecorddataget = await dbService.findOneRecord("cartModel", where);
+    const updaterecorddataget = await dbService.findOneRecord(
+      "cartModel",
+      where
+    );
     // console.log("updaterecorddataget", updaterecorddataget);
 
     if (!updaterecorddataget) {
@@ -466,7 +521,11 @@ const chnageImgCartItem = async (req) => {
 
     // Convert selectedImageIndex to integer and validate it
     const imageIndex = parseInt(selectedImageIndex, 10);
-    if (isNaN(imageIndex) || imageIndex < 0 || imageIndex >= updatedPhotos.length) {
+    if (
+      isNaN(imageIndex) ||
+      imageIndex < 0 ||
+      imageIndex >= updatedPhotos.length
+    ) {
       return {
         message: "Invalid selectedImageIndex",
         type: "ERROR",
@@ -482,9 +541,10 @@ const chnageImgCartItem = async (req) => {
     };
 
     // Use your updateMany or updateOne function to update the database record
-    const updatedRecord = await dbService.updateManyRecords("cartModel",
-      { _id: cartid },  // Find the correct cart item
-      { $set: updateData },  // Update the photos array
+    const updatedRecord = await dbService.updateManyRecords(
+      "cartModel",
+      { _id: cartid }, // Find the correct cart item
+      { $set: updateData } // Update the photos array
     );
 
     // console.log("updatedRecord",updatedRecord);
@@ -537,7 +597,9 @@ const order = async (req, res) => {
     const userId = decodedToken.userId;
 
     // Fetch cart and product data
-    const cartData = await dbService.findAllRecords("cartModel", { userid: userId });
+    const cartData = await dbService.findAllRecords("cartModel", {
+      userid: userId,
+    });
     const productData = await dbService.findAllRecords("productModel", {});
 
     if (!cartData || cartData.length === 0) {
@@ -573,7 +635,9 @@ const order = async (req, res) => {
     );
 
     if (!matchingPrice) {
-      throw new Error("No matching price found for the selected size and frame option");
+      throw new Error(
+        "No matching price found for the selected size and frame option"
+      );
     }
 
     // Prepare orderData
@@ -600,19 +664,19 @@ const order = async (req, res) => {
       trackingid: "",
     };
 
-
     const savedOrder = await dbService.createOneRecord("orderModel", orderData);
 
     if (savedOrder) {
       const decodedToken = await universal.decodeDirectJwtTokenFn(token);
       const userId = decodedToken.userId;
-      const cartDatadelete = await dbService.deleteManyRecords("cartModel", { userid: userId });
+      const cartDatadelete = await dbService.deleteManyRecords("cartModel", {
+        userid: userId,
+      });
       if (cartDatadelete) {
         return {
           message: "Order placed successfully",
         };
-      }
-      else {
+      } else {
         console.error("Error in order service:", error.message);
         throw new Error(error.message);
       }
@@ -630,9 +694,9 @@ const getAllOrderList = async (req) => {
     const productData = await dbService.findAllRecords("productModel", {});
 
     // Transform orderdata
-    const enrichedOrderData = orderdata.map(order => {
+    const enrichedOrderData = orderdata.map((order) => {
       const product = productData.find(
-        prod => prod._id.toString() === order.productId.toString()
+        (prod) => prod._id.toString() === order.productId.toString()
       );
 
       if (product) {
@@ -645,7 +709,11 @@ const getAllOrderList = async (req) => {
       }
 
       // If no matching product is found
-      return { ...order._doc, selectedColor: order.selectedColor, colorImage: null };
+      return {
+        ...order._doc,
+        selectedColor: order.selectedColor,
+        colorImage: null,
+      };
     });
 
     // Return the transformed order data
@@ -665,7 +733,9 @@ const sendPosterWithEmail = async (req, res) => {
     const id = req.body.id;
     const posterImage = req.file.filename;
 
-    const getOrderRecord = await dbService.findOneRecord("orderModel", { _id: id });
+    const getOrderRecord = await dbService.findOneRecord("orderModel", {
+      _id: id,
+    });
 
     if (!getOrderRecord) {
       return { message: "Order not found" };
@@ -693,12 +763,16 @@ const sendPosterWithEmail = async (req, res) => {
 };
 
 /*************************** adminOrderCreate ***************************/
-const adminOrderCreate = async (req) => { 
+const adminOrderCreate = async (req) => {
   try {
     const id = req.body.productid;
-    const getOrderRecord = await dbService.findOneRecord("orderModel", { _id: id });
+    const getOrderRecord = await dbService.findOneRecord("orderModel", {
+      _id: id,
+    });
     console.log("getOrderRecord", getOrderRecord);
-    const getUserData = await dbService.findOneRecord("userModel", { _id: getOrderRecord.userId });
+    const getUserData = await dbService.findOneRecord("userModel", {
+      _id: getOrderRecord.userId,
+    });
     console.log("getOrderRecord", getUserData);
 
     if (!getOrderRecord) {
@@ -748,27 +822,26 @@ const adminOrderCreate = async (req) => {
         return {
           message: "Create Order successfully",
         };
-      }
-      else {
+      } else {
         console.error("Error Create Order:", error);
         throw new Error("Failed to Create Order");
       }
-    }
-    else{
+    } else {
       console.error("email send :", error);
     }
-
   } catch (error) {
     console.error("Error Create Order:", error);
     throw new Error("Failed to Create Order");
   }
-}
+};
 
 /*************************** adminOrderComplete ***************************/
 const adminOrderComplete = async (req) => {
   try {
     const id = req.body.productid;
-    const getOrderRecord = await dbService.findOneRecord("orderModel", { _id: id });
+    const getOrderRecord = await dbService.findOneRecord("orderModel", {
+      _id: id,
+    });
 
     if (!getOrderRecord) {
       return { message: "Order not found" };
@@ -789,8 +862,7 @@ const adminOrderComplete = async (req) => {
         message: "complete Order successfully",
         updatedRecord,
       };
-    }
-    else {
+    } else {
       console.error("Error complete Order:", error);
       throw new Error("Failed to complete Order");
     }
@@ -798,13 +870,13 @@ const adminOrderComplete = async (req) => {
     console.error("Error complete Order:", error);
     throw new Error("Failed to complete Order");
   }
-}
+};
 
 /*************************** adminOrderComplete ***************************/
 const addCategory = async (req) => {
   try {
     const { category } = req.body;
-    const image = req.file ? req.file.filename : null;  
+    const image = req.file ? req.file.filename : null;
 
     if (!category || !image) {
       throw new Error("Category name and image are required.");
@@ -812,14 +884,18 @@ const addCategory = async (req) => {
 
     const data = {
       category: category,
-      image: image
+      image: image,
+      product: "",
     };
 
-    const addCategoryResult = await dbService.createOneRecord("categoryModel", data);
+    const addCategoryResult = await dbService.createOneRecord(
+      "categoryModel",
+      data
+    );
 
     if (addCategoryResult) {
       return {
-        message: "Category added successfully!"
+        message: "Category added successfully!",
       };
     } else {
       throw new Error("Failed to add category.");
@@ -827,7 +903,7 @@ const addCategory = async (req) => {
   } catch (error) {
     console.error("Error in addCategory:", error);
     return {
-      message: error.message || "An error occurred while adding the category."
+      message: error.message || "An error occurred while adding the category.",
     };
   }
 };
@@ -907,22 +983,20 @@ const updateCategory = async (req) => {
   }
 
   try {
-    // Find the category by ID
-    const category = await dbService.findOneRecord("categoryModel", { _id: categoryId });
+    const category = await dbService.findOneRecord("categoryModel", {
+      _id: categoryId,
+    });
     if (!category) {
       return { message: "Category not found" };
     }
 
-    // Handle the image (if provided)
     const image = req.file ? req.file.filename : null;
 
-    // Update data with categoryName and image (if new image is uploaded)
     const updateData = {
       categoryName,
-      image
+      image,
     };
 
-    // Perform the update operation
     const updatedCategory = await dbService.findOneAndUpdateRecord(
       "categoryModel",
       { _id: categoryId },
@@ -943,9 +1017,108 @@ const updateCategory = async (req) => {
   }
 };
 
+/*************************** getCategoryWithProduct ***************************/
+const getCategoryWithProduct = async (req) => {
+  let where = {
+    product: { $gt: 1 },
+  };
 
+  try {
+    let data = await dbService.findAllRecords("categoryModel", where);
+    if (data && data.length > 0) {
+      return {
+        success: true,
+        data: data,
+        message: "Category data fetched successfully!",
+      };
+    } else {
+      return {
+        success: false,
+        message: "No categories found with product count greater than 1.",
+      };
+    }
+  } catch (error) {
+    console.error("Error fetching categories:", error);
+    return {
+      success: false,
+      message: "Error fetching categories",
+      error: error.message,
+    };
+  }
+};
+
+/*************************** getProductWithCategory ***************************/
+const getProductWithCategory = async (req) => {
+  const { categoryId } = req.body;
+  console.log("categoryId", categoryId);
+
+  try {
+    const productdata = await dbService.findAllRecords("productModel", {
+      category: { $elemMatch: { categoryId: categoryId } },
+    });
+
+    // console.log("productdata", productdata);
+
+    if (productdata.length > 0) {
+      return {
+        success: true,
+        data: productdata,
+      };
+    } else {
+      return {
+        success: false,
+        message: "No products found for this category",
+      };
+    }
+  } catch (error) {
+    console.error("Error fetching products:", error);
+    return {
+      success: false,
+      message: "Error fetching products",
+      error: error.message,
+    };
+  }
+};
+
+/*************************** addRazorpayPayment ***************************/
+const addRazorpayPayment = async (req) => {
+  try {
+    const { amount, currency, receipt } = req.body;
+
+    // Razorpay Instance बनाएं
+    const razorpayInstance = new Razorpay({
+      key_id: "rzp_test_ke3jvwgV2cKbnL",
+      key_secret: "JHX072SJKK6YsdiZiMNpvZlo",
+    });
+
+    const options = {
+      amount: parseInt(amount) * 100,
+      currency: currency,
+      receipt: receipt,
+    };
+
+    const order = await razorpayInstance.orders.create(options);
+
+    console.log("Order Created: ", order);
+
+    return {
+      status: 200,
+      message: "Order Created Successfully",
+      data: order,
+    };
+  } catch (error) {
+    console.error("Error creating Razorpay order:", error);
+    throw {
+      status: 400,
+      message: "Error creating Razorpay order",
+      error: error.message,
+    };
+  }
+};
 
 module.exports = {
+  getProductWithCategory,
+  addRazorpayPayment,
   updateCategory,
   categoryDelete,
   getCategory,
@@ -963,5 +1136,6 @@ module.exports = {
   addToCardOverify,
   cartList,
   getAllOrderList,
-  adminOrderComplete
+  adminOrderComplete,
+  getCategoryWithProduct,
 };

@@ -21,8 +21,12 @@ const addCategory = require("./addCategory");
 const getCategory = require("./getCategory");
 const categoryDelete = require("./categoryDelete");
 const updateCategory = require("./updateCategory");
+const getCategoryWithProduct = require("./getCategoryWithProduct");
+const getProductWithCategory = require("./getProductWithCategory");
+const addRazorpayPayment = require("./addRazorpayPayment");
 
 module.exports = [
+    addRazorpayPayment,
     productAdd,
     sendOtp,
     productList,
@@ -39,5 +43,7 @@ module.exports = [
     addCategory,
     getCategory,
     categoryDelete,
-    updateCategory
+    updateCategory,
+    getCategoryWithProduct,
+    getProductWithCategory
 ];
